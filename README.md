@@ -56,6 +56,42 @@ de extensão, com nota escalonada em 1,2 / 1,7 / 2,0.
 
 ---
 
+## Entrega 1 — Plano de endereçamento
+
+### Sub-redes
+
+| Segmento | Sub-rede | Endereços totais | Utilizáveis para host |
+|---|---|---|---|
+| A | `10.0.10.0/24` | 256 | 254 (`10.0.10.1` a `10.0.10.254`) |
+| B | `10.0.20.0/24` | 256 | 254 (`10.0.20.1` a `10.0.20.254`) |
+
+Uma `/24` reserva sempre 2 endereços por sub-rede: o primeiro (`.0`) identifica
+a própria rede, e o último (`.255`) é o endereço de broadcast, que atinge
+todos os hosts da sub-rede ao mesmo tempo. Nenhum dos dois pode ser atribuído
+a uma máquina individual — por isso 256 − 2 = 254 endereços utilizáveis.
+
+### Máquinas
+
+| Contêiner | Segmento | Endereço |
+|---|---|---|
+| `e1-host-a1` | A | `10.0.10.10` |
+| `e1-host-a2` | A | `10.0.10.11` |
+| `e1-srv-a` | A | `10.0.10.20` |
+| `e1-host-b1` | B | `10.0.20.10` |
+| `e1-host-b2` | B | `10.0.20.11` |
+
+### Por que o segmento A não alcança o B
+
+Cada host tem a rota padrão removida de propósito
+(`ip route del default`), e não existe nenhum roteador ligando as duas
+sub-redes. Sem rota para fora da própria rede, um host de A não tem como
+encaminhar um pacote destinado a `10.0.20.0/24` — o próprio kernel já sabe que
+não tem por onde mandar. Por isso o `ping` de A para B falha imediatamente com
+`Network is unreachable`, um erro de camada 3 detectado localmente, e não um
+timeout (que indicaria uma tentativa de envio sem resposta).
+
+---
+
 ## Regras do jogo
 
 **A entrega é o repositório, nunca o ambiente.** A correção é feita clonando o

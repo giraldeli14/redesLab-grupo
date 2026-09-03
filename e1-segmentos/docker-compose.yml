@@ -44,6 +44,17 @@ services:
   # Os nomes de contêiner DEVEM ser e1-host-b1 e e1-host-b2,
   # porque é assim que verificar.sh procura por eles.
   # Copie o padrão de host-a1 e ajuste rede e endereço.
+
+  host-b1:
+    <<: *host
+    container_name: e1-host-b1
+    networks: {seg-b: {ipv4_address: 10.0.20.10}}
+
+  host-b2:
+    <<: *host
+    container_name: e1-host-b2
+    networks: {seg-b: {ipv4_address: 10.0.20.11}}
+  
   # ------------------------------------------------------------------
 
 networks:

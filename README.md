@@ -128,8 +128,9 @@ controle.
 | TTL | 64 | 63 | mudou |
 | Checksum do cabeçalho IP | `0x7fc1` | `0x80c1` | mudou (consequência do TTL) |
 
-Print do Wireshark com os campos marcados (vermelho = mudou, verde = não
-mudou): `/home/giraldagiovana/redes-lab/e2-roteador/print/wireshark.png`.
+Print do Wireshark com os campos marcados (vermelho = mudou, verde = não mudou):
+
+![Wireshark: perna A e perna B lado a lado](e2-roteador/print/wireshark.png)
 
 ### Por que o MAC muda e o IP não
 

@@ -23,6 +23,7 @@ services:
   host-a1:
     <<: *host
     container_name: e2-host-a1
+    command: ["sh","-c","ip route del default 2>/dev/null || true; ip route add 10.0.20.0/24 via 10.0.10.254; exec sleep infinity"]
     networks: {seg-a: {ipv4_address: 10.0.10.10}}
 
   host-a2:                       # controle — NÃO acrescente rota aqui
@@ -33,6 +34,7 @@ services:
   host-b1:
     <<: *host
     container_name: e2-host-b1
+    command: ["sh","-c","ip route del default 2>/dev/null || true; ip route add 10.0.10.0/24 via 10.0.20.254; exec sleep infinity"]
     networks: {seg-b: {ipv4_address: 10.0.20.10}}
 
   router:

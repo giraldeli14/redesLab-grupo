@@ -92,6 +92,51 @@ timeout (que indicaria uma tentativa de envio sem resposta).
 
 ---
 
+## Entrega 2 — O roteador e o encapsulamento
+
+### Topologia
+
+| Contêiner | Segmento | Endereço | Rota |
+|---|---|---|---|
+| `e2-host-a1` | A | `10.0.10.10` | `10.0.20.0/24 via 10.0.10.254` |
+| `e2-host-a2` | A | `10.0.10.11` | nenhuma (grupo de controle) |
+| `e2-host-b1` | B | `10.0.20.10` | `10.0.10.0/24 via 10.0.20.254` |
+| `e2-router` | A e B | `10.0.10.254` / `10.0.20.254` | repasse IP ligado |
+
+As rotas estão escritas no `command` de `host-a1` e `host-b1` em
+`e2-roteador/docker-compose.yml`, e não digitadas no terminal, para
+sobreviverem a um reinício. O `host-a2` não foi tocado: ele é o grupo de
+controle.
+
+### O que a verificação prova
+
+- `host-a1` alcança `host-b1` com **TTL 63**: o pacote saiu com 64 e chegou
+  com 63, ou seja, houve um salto.
+- `host-a2`, sem rota, continua com `Network is unreachable`. Mesma máquina,
+  mesma rede, só muda a configuração: foi a rota que fez a diferença.
+- Capturas simultâneas nas duas pernas do roteador:
+  `perna-a.pcap` e `perna-b.pcap`.
+
+### O que mudou e o que não mudou
+
+| Campo | Perna A | Perna B | |
+|---|---|---|---|
+| Ethernet origem | `06:cd:9c:9c:db:eb` (host-a1) | `c6:43:8b:e8:f9:be` (roteador, lado B) | mudou |
+| Ethernet destino | `b2:b4:bc:69:12:45` (roteador, lado A) | `06:d2:24:b9:e3:9e` (host-b1) | mudou |
+| IP origem → destino | `10.0.10.10` → `10.0.20.10` | `10.0.10.10` → `10.0.20.10` | **não mudou** |
+| Identification | `0x88d4` | `0x88d4` | não mudou (mesmo pacote) |
+| TTL | 64 | 63 | mudou |
+| Checksum do cabeçalho IP | `0x7fc1` | `0x80c1` | mudou (consequência do TTL) |
+
+Print do Wireshark com os campos marcados (vermelho = mudou, verde = não
+mudou): `/home/giraldagiovana/redes-lab/e2-roteador/print/wireshark.png`.
+
+### Por que o MAC muda e o IP não
+
+O endereço MAC só vale dentro de um enlace: ele diz qual interface, naquele segmento, deve receber o quadro. Quando o pacote do host-a1 chega ao roteador, o quadro da perna A é desmontado; o roteador consulta a tabela de rotas, descobre que 10.0.20.0/24 está na outra perna e monta um quadro novo, com o MAC da própria interface como origem e o MAC do host-b1 como destino. Por isso o MAC muda a cada enlace. Já o endereço IP identifica quem enviou e quem deve receber de ponta a ponta, então o pacote IP atravessa dentro dos quadros sem ser reescrito: nas duas capturas a origem é 10.0.10.10, o destino é 10.0.20.10 e até o campo Identification é o mesmo. O roteador só decrementa o TTL (64 para 63) e recalcula o checksum do cabeçalho. É por isso também que o host-a2 não passa: sem rota, ele não sabe que o roteador é o próximo salto.
+
+---
+
 ## Regras do jogo
 
 **A entrega é o repositório, nunca o ambiente.** A correção é feita clonando o

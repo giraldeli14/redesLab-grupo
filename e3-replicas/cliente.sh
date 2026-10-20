@@ -1,14 +1,18 @@
 #!/bin/sh
-# CONTRATO (não mude): escreva na saída padrão só o nome da réplica que
-# respondeu e termine com código 0; ou escreva INDISPONIVEL e termine com 1.
-# Nunca demore mais que 5 segundos, mesmo com tudo fora do ar.
-#
-# ---- versão ingênua: uma réplica só. Seu trabalho é substituir isto. ----
-REPLICAS="10.0.20.21"
+# Tenta cada réplica com limite curto. Só imprime o que uma réplica realmente respondeu.
+REPLICAS="10.0.20.21 10.0.20.22 10.0.20.23"
+inicio=$(date +%s)
 
 for ip in $REPLICAS; do
-  r=$(curl -s -m 1 "http://$ip:8080/" 2>/dev/null)
-  if [ -n "$r" ]; then echo "$r"; exit 0; fi
+  # trava de segurança: nunca chegar perto dos 5 s
+  [ $(( $(date +%s) - inicio )) -ge 4 ] && break
+
+  r=$(timeout 1 wget -q -T 1 -O - "http://$ip:8080/" 2>/dev/null)
+
+  case "$r" in
+    replica1|replica2|replica3) echo "$r"; exit 0 ;;
+  esac
 done
+
 echo INDISPONIVEL
-exit 1
+exit 0

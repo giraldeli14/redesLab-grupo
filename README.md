@@ -138,6 +138,52 @@ O endereço MAC só vale dentro de um enlace: ele diz qual interface, naquele se
 
 ---
 
+---
+
+## Entrega 3 — O serviço não pode cair
+
+### Topologia
+
+| Contêiner | Segmento | Endereço |
+|---|---|---|
+| `e3-cliente` | A | `10.0.10.10` |
+| `e3-replica1` | B | `10.0.20.21` |
+| `e3-replica2` | B | `10.0.20.22` |
+| `e3-replica3` | B | `10.0.20.23` |
+| `e3-router` | A e B | `10.0.10.254` / `10.0.20.254` |
+
+Três réplicas do mesmo serviço (`httpd` na porta 8080, cada uma respondendo o próprio nome) no segmento B, o cliente no segmento A e o roteador da Entrega 2 no meio.
+
+### Como o `cliente.sh` funciona
+
+O cliente tenta as réplicas em ordem (`.21`, `.22`, `.23`). Cada tentativa tem limite de 1 s (`timeout 1` + `wget -T 1`). Na primeira que responde, ele imprime a resposta e encerra. Se nenhuma responder, imprime `INDISPONIVEL`. Uma trava de segurança interrompe o laço se já passaram 4 s, então o cliente nunca chega perto dos 5 s. No pior caso, com tudo fora, são 3 tentativas e cerca de 3 s.
+
+O cliente só imprime o **conteúdo que uma réplica realmente devolveu**, e só se for `replica1`, `replica2` ou `replica3`. Ele nunca monta o nome a partir do IP que tentou, então não tem como anunciar uma réplica parada ou incomunicável.
+
+### O que a verificação prova
+
+| Estado | Resultado observado |
+|---|---|
+| Tudo no ar | respondeu `replica1` em 0 s |
+| Réplica 1 parada | respondeu `replica2` em 1 s |
+| Duas paradas | respondeu `replica3` em 2 s |
+| Partição de rede | `INDISPONIVEL` em 3 s |
+| Restaurado | respondeu `replica1` |
+
+O tempo cresce 1 s a cada réplica inalcançável porque cada uma consome seu limite de 1 s antes de o cliente passar para a próxima.
+
+**Observação sobre a verificação:** quando a réplica3 passa pelo `network disconnect` e pelo `network connect`, ela perde a rota `10.0.10.0/24 via 10.0.20.254`, que só é criada quando o contêiner nasce. Por isso cada verificação deve começar de uma topologia recém-criada (`make down E=3 && make up E=3`). A evidência foi gerada assim.
+
+### O cliente consegue distinguir uma réplica morta de uma particionada?
+
+**Não.** Nos dois casos o cliente observa exatamente a mesma coisa: nenhuma resposta dentro do prazo. Com `docker stop` a réplica morre; com `docker network disconnect` ela continua viva, processando, mas ninguém consegue falar com ela. De fora, as duas situações são indistinguíveis. O timeout é apenas uma *suspeita* de falha, nunca uma prova de que a réplica morreu.
+
+### Isso é um problema?
+
+Depende do serviço. Aqui as réplicas são somente leitura e idempotentes: se o cliente desiste de uma réplica que na verdade estava viva e tenta a seguinte, o pior que acontece é uma tentativa desperdiçada, e o resultado para quem chamou é o mesmo. Por isso, neste trabalho, não distinguir morte de partição é aceitável.
+
+Seria um problema sério num serviço que escreve dados ou executa ações (um pagamento, por exemplo). A réplica "morta" pode estar viva e ter processado o pedido, e o cliente, ao tentar outra réplica, pode duplicar a operação ou criar estados divergentes (*split-brain*). Nesse caso seriam necessários mecanismos como operações idempotentes, identificadores de requisição ou consenso entre as réplicas.
+
 ## Regras do jogo
 
 **A entrega é o repositório, nunca o ambiente.** A correção é feita clonando o

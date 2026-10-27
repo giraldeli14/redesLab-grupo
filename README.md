@@ -138,8 +138,6 @@ O endereço MAC só vale dentro de um enlace: ele diz qual interface, naquele se
 
 ---
 
----
-
 ## Entrega 3 — O serviço não pode cair
 
 ### Topologia
@@ -183,6 +181,101 @@ O tempo cresce 1 s a cada réplica inalcançável porque cada uma consome seu li
 Depende do serviço. Aqui as réplicas são somente leitura e idempotentes: se o cliente desiste de uma réplica que na verdade estava viva e tenta a seguinte, o pior que acontece é uma tentativa desperdiçada, e o resultado para quem chamou é o mesmo. Por isso, neste trabalho, não distinguir morte de partição é aceitável.
 
 Seria um problema sério num serviço que escreve dados ou executa ações (um pagamento, por exemplo). A réplica "morta" pode estar viva e ter processado o pedido, e o cliente, ao tentar outra réplica, pode duplicar a operação ou criar estados divergentes (*split-brain*). Nesse caso seriam necessários mecanismos como operações idempotentes, identificadores de requisição ou consenso entre as réplicas.
+
+---
+
+## Entrega 4 — A rota se refaz sozinha
+
+### Topologia
+
+| Contêiner | Segmentos | Endereços |
+|---|---|---|
+| `e4-host-a` | A | `10.0.10.10` |
+| `e4-host-b` | B | `10.0.20.10` |
+| `e4-r1` | A, trânsito 1, trânsito 2 | `10.0.10.254` / `10.0.30.11` / `10.0.40.11` |
+| `e4-r2` | B, trânsito 1, trânsito 3 | `10.0.20.254` / `10.0.30.12` / `10.0.50.12` |
+| `e4-r3` | trânsito 2, trânsito 3 | `10.0.40.13` / `10.0.50.13` |
+
+Existem dois caminhos entre A e B: o curto, direto pelo trânsito 1
+(r1 → r2, 1 salto), e o desvio por r3 (r1 → r3 → r2, 2 saltos).
+
+### O que foi alterado
+
+- **Rotas estáticas removidas** dos três roteadores. O `iniciar-roteador.sh`
+  agora só sobe o BIRD (`exec bird -f -c /lab/bird-$ROLE.conf`), com RIP
+  (vetor de distância) no lugar do `case` de rotas fixas.
+- **`router id` do r2 corrigido** em `bird-r2.conf`: estava com router id 0.0.0. 0, e agora é `10.0.30.12`, diferente do de r1 (`10.0.10.254`) e r3 (`10.0.40.    13`). Dois roteadores com o mesmo id são tratados como o mesmo roteador por quem depende dele, o que pode corromper o que cada um aprende.
+
+### Antes: a rota estática falha
+
+Com as rotas estáticas, derrubar o trânsito 1 deixou a rede morta: o r1 ficou
+sem rota para `10.0.20.10`, porque a rota estática sumiu junto com a
+interface. O desvio por r3 estava saudável e ninguém o usava. A rota tinha
+sido decidida à mão e não se refazia sozinha.
+
+### Depois: a rota se refaz
+
+| Momento | Próximo salto do r1 para `10.0.20.10` |
+|---|---|
+| Normal | `via 10.0.30.12 dev eth2` (caminho curto, trânsito 1) |
+| Trânsito 1 derrubado (depois da convergência) | `via 10.0.40.13 dev eth0` (desvio por r3) |
+| Trânsito 1 religado | `via 10.0.30.12 dev eth2` (volta ao caminho curto) |
+
+O próximo salto **mudou** de `10.0.30.12` para `10.0.40.13`. Isso prova que a
+rede voltou por convergência do protocolo: com o caminho idêntico ao de antes,
+nada teria convergido. Ao religar o trânsito 1, o RIP também refez o caminho
+curto sozinho, sem ninguém mexer em rota.
+
+### Tempo de convergência medido
+
+Medido por `make verificar E=4`, do momento em que o trânsito 1 é derrubado
+(nas duas pontas) até o `host-a` voltar a alcançar o `host-b`:
+
+| Execução | Tempo |
+|---|---|
+| 1 | 10 s |
+| 2 | 30 s |
+
+**O tempo varia de execução para execução**, na faixa de 10 a 30 s. O RIP
+anuncia a tabela periodicamente, e o momento em que a queda acontece em relação
+ao ciclo de updates dos vizinhos muda a cada rodada. Se o desvio por r3 já foi
+anunciado há pouco, a recuperação é rápida; se o próximo anúncio ainda está
+longe, ela espera o ciclo.
+
+Timers: `[conferir no bird-r*.conf. Se não há update-time/timeout-time no bloco
+rip, valem os padrões do BIRD: update 30 s, timeout 180 s]`. O máximo
+observado (30 s) coincide com o intervalo de update padrão.
+
+### E numa rede com 50 roteadores?
+
+O tempo **piora**, e por três motivos:
+
+1. **A notícia se propaga salto a salto.** Cada roteador só conhece o que o
+   vizinho anuncia, e as mudanças andam no ritmo dos updates. Na pior
+   hipótese, o tempo cresce com o *diâmetro* da rede (quantos saltos a
+   notícia precisa percorrer) multiplicado pelo intervalo de update. Com 3
+   roteadores a notícia dá poucos saltos; com 50, pode dar dezenas.
+   A nossa própria variação (10 s a 30 s com apenas 3 roteadores) já mostra que o
+   tempo depende do ciclo de updates e não é fixo; com 50 roteadores essa
+   incerteza se soma a cada salto.
+2. **Notícia ruim viaja devagar.** Quando uma rota some, vizinhos podem
+   continuar anunciando caminhos uns pelos outros e a métrica sobe de 1 em 1
+   até o "infinito" (*contagem até o infinito*). O RIP limita isso com 16
+   como infinito, o que também limita a rede a 15 saltos, e usa mecanismos
+   como *split horizon* e *poison reverse* para reduzir o problema, sem
+   eliminá-lo.
+3. **O custo de controle cresce.** Cada roteador reenvia periodicamente a
+   tabela inteira para os vizinhos, e a tabela cresce com o tamanho da rede.
+
+Além disso, nossa medição só foi rápida porque o cabo caiu "de verdade" e a
+interface sumiu, o que o roteador percebe na hora. Uma falha silenciosa (o
+vizinho para de responder, mas o enlace continua de pé) só é detectada
+quando o temporizador de timeout expira (180 s por padrão), e isso é somado
+ao tempo de propagação. É por isso que o vetor de distância não escala bem
+para redes grandes, e protocolos de estado de enlace (OSPF) são preferidos
+nelas.
+
+---
 
 ## Regras do jogo
 

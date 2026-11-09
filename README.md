@@ -242,9 +242,10 @@ ao ciclo de updates dos vizinhos muda a cada rodada. Se o desvio por r3 já foi
 anunciado há pouco, a recuperação é rápida; se o próximo anúncio ainda está
 longe, ela espera o ciclo.
 
-Timers: `[conferir no bird-r*.conf. Se não há update-time/timeout-time no bloco
-rip, valem os padrões do BIRD: update 30 s, timeout 180 s]`. O máximo
-observado (30 s) coincide com o intervalo de update padrão.
+Timers: os arquivos `bird-r1.conf`, `bird-r2.conf` e `bird-r3.conf`
+(em `e4-roteamento/`) não definem `update time` nem `timeout time` no bloco
+`rip`, então valem os padrões do BIRD: update de 30 s e timeout de 180 s.
+O máximo observado (30 s) coincide com o intervalo de update padrão.
 
 ### E numa rede com 50 roteadores?
 
@@ -274,6 +275,92 @@ quando o temporizador de timeout expira (180 s por padrão), e isso é somado
 ao tempo de propagação. É por isso que o vetor de distância não escala bem
 para redes grandes, e protocolos de estado de enlace (OSPF) são preferidos
 nelas.
+
+---
+
+## Entrega 5 — O pacote entrega o segredo
+
+### Topologia
+
+| Contêiner | Segmento | Endereço |
+|---|---|---|
+| `e5-cliente` | A | `10.0.10.10` |
+| `e5-srv` | B | `10.0.20.20` |
+| `e5-router` | A e B | `10.0.10.254` / `10.0.20.254` |
+
+O cliente está no segmento A, o servidor no B e o roteador no meio. A captura
+é feita **no roteador** (`tcpdump` na perna do segmento B), porque é ele quem
+está no caminho de todo o tráfego.
+
+### O que foi alterado
+
+- **`token.txt`:** agora contém o identificador do grupo `gruporedes`,
+  que é o segredo inventado usado nos testes. Como é único por grupo, a
+  evidência não passa de um grupo para outro.
+- **`iniciar-servidor.sh`:** além da área restrita sem proteção (HTTP, porta
+  8080), o servidor agora sobe a **mesma área restrita protegida por TLS**
+  (HTTPS, porta 8443), com `openssl s_server` e um certificado autoassinado
+  gerado na hora. As duas versões ficam no ar de propósito: o trabalho é
+  mostrar a diferença, não esconder a insegura.
+
+### O que a verificação prova
+
+| Teste | Resultado observado |
+|---|---|
+| HTTP: o cliente entra na área restrita | página `area restrita do sistema` |
+| HTTP: o segredo aparece na captura do roteador | `1` pacote com o token, em 12 capturados |
+| HTTPS: houve tráfego capturado (a captura está viva) | 19 pacotes |
+| HTTPS: o segredo não aparece | 0 ocorrências em 19 pacotes |
+
+As provas se sustentam mutuamente: "o segredo não apareceu" só vale porque a
+captura do HTTPS tem pacotes. Uma captura vazia esconde qualquer coisa.
+
+### Claro × cifrado
+
+| | `claro.pcap` (porta 8080) | `cifrado.pcap` (porta 8443) |
+|---|---|---|
+| Pacote que leva o segredo | nº 4, `HTTP GET / HTTP/1.1`, 179 bytes | nº 9, `TLSv1.3 Application Data`, 201 bytes |
+| Protocolo visto no Wireshark | HTTP | TLSv1.3 |
+| Conteúdo legível? | sim, incluindo `Authorization: Bearer gruporedes` | não, só bytes embaralhados |
+| Total de pacotes | 12 | 19 (o handshake TLS acrescenta pacotes) |
+
+Prints do Wireshark (Seguir > Fluxo TCP) dos dois pacotes:
+
+![Fluxo TCP do claro.pcap: o token legível](e5-captura/print/claro.png)
+![Fluxo TCP do cifrado.pcap: conteúdo ilegível](e5-captura/print/cifrado.png)
+
+### Por que a captura é feita no roteador
+
+Numa rede comutada, um computador comum não vê o tráfego dos outros: o switch
+entrega cada quadro só na porta certa. Quem vê tudo é quem está no caminho.
+No laboratório, é o roteador. Num café, é o ponto de acesso Wi-Fi, e quem o
+controla. É por isso que digitar uma senha num site sem proteção numa rede
+que não é sua é arriscado.
+
+### O que o TLS esconde e o que não esconde
+
+Com TLS, o roteador continua vendo **quem fala com quem**: endereços IP,
+portas, horários e tamanhos dos pacotes. O que ele deixa de ver é o
+**conteúdo**, e é lá que está a senha.
+
+### Por que o navegador reclamaria do certificado
+
+O certificado do servidor foi assinado pelo próprio grupo, e nenhuma
+autoridade confiável o conhece. O navegador não tem como saber se está
+falando com o servidor verdadeiro ou com um impostor, então avisa. Por isso o
+cliente usa `curl -k`, que ignora o aviso (só aceitável aqui, num laboratório
+nosso). Em sites de verdade, o certificado é assinado por uma autoridade que
+o navegador já conhece, e o aviso não aparece.
+
+### Escopo da captura
+
+Toda a captura foi feita **somente dentro do laboratório**, entre contêineres
+do próprio grupo, com um segredo inventado por nós. Nenhum tráfego de rede
+alheia foi capturado.
+
+### Cartilha de Wi-Fi seguro (atividade de extensão)
+
+Material para quem não estuda redes: [`[caminho-da-cartilha]`]([caminho-da-cartilha]).
 
 ---
 

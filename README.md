@@ -326,8 +326,8 @@ captura do HTTPS tem pacotes. Uma captura vazia esconde qualquer coisa.
 
 Prints do Wireshark (Seguir > Fluxo TCP) dos dois pacotes:
 
-![Fluxo TCP do claro.pcap: o token legível](e5-captura/print/claro.png)
-![Fluxo TCP do cifrado.pcap: conteúdo ilegível](e5-captura/print/cifrado.png)
+![Fluxo TCP do claro.pcap: o token legível](e5-seguranca/claro.png)
+![Fluxo TCP do cifrado.pcap: conteúdo ilegível](e5-seguranca/cifrado.png)
 
 ### Por que a captura é feita no roteador
 

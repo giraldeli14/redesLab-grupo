@@ -358,10 +358,6 @@ Toda a captura foi feita **somente dentro do laboratório**, entre contêineres
 do próprio grupo, com um segredo inventado por nós. Nenhum tráfego de rede
 alheia foi capturado.
 
-### Cartilha de Wi-Fi seguro (atividade de extensão)
-
-Material para quem não estuda redes: [`[caminho-da-cartilha]`]([caminho-da-cartilha]).
-
 ---
 
 ## Regras do jogo
